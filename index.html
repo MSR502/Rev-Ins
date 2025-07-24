@@ -17,17 +17,12 @@
       background-color: var(--bg-color);
       color: var(--text-color);
     }
-
     header, footer {
-  padding: 10px;
-  background: white;
-  }
-    header {
-      
+      padding: 10px;
+      background: white;
       border-bottom: 1px solid #ddd;
     }
     footer {
-      
       border-top: 1px solid #ddd;
     }
     .nav {
@@ -120,7 +115,7 @@
   </footer>
 
   <button class="fab" id="junkFab">
-    <svg width="800px" height="800px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" stroke-width="5" stroke="#fff" fill="none">
+    <svg width="30px" height="30px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" stroke-width="5" stroke="#fff" fill="none">
       <circle cx="32" cy="32" r="25.3"/>
       <line x1="49.89" y1="49.89" x2="14.11" y2="14.11"/>
     </svg>
@@ -133,8 +128,8 @@
 
   <script>
     const Icons = {
-      left: `<svg viewBox="0 0 24 24" width="24" height="24"><polyline points="15 18 9 12 15 6" stroke="black" stroke-width="2" fill="none"/></svg>`,
-      right: `<svg viewBox="0 0 24 24" width="24" height="24"><polyline points="9 6 15 12 9 18" stroke="black" stroke-width="2" fill="none"/></svg>`
+      left: `<svg viewBox="0 0 24 24" width="24" height="24"><polyline points="15 18 9 12 15 6" stroke="black" stroke-width="1.5" fill="none"/></svg>`,
+      right: `<svg viewBox="0 0 24 24" width="24" height="24"><polyline points="9 6 15 12 9 18" stroke="black" stroke-width="1.5" fill="none"/></svg>`
     };
 
     const baseUrl = 'https://raw.githubusercontent.com/MSR502/Rev-Ins/refs/heads/main/res1/';
@@ -147,9 +142,13 @@
       document.getElementById('navLeftBottom').innerHTML = Icons.left;
       document.getElementById('navRightBottom').innerHTML = Icons.right;
 
-      const match = location.pathname.match(/\/ch\/(\d+)/);
+      const urlParams = new URLSearchParams(location.search);
+      const queryChapter = parseInt(urlParams.get("ch"));
       const stored = localStorage.getItem('lastChapter');
-      const ch = match ? parseInt(match[1]) : stored ? parseInt(stored) : 1;
+
+      const ch = !isNaN(queryChapter) ? queryChapter :
+                stored ? parseInt(stored) : 1;
+
       loadChapter(ch);
 
       document.getElementById("navLeftTop").onclick = () => loadChapter(currentChapter - 1);
@@ -170,16 +169,12 @@
         }
         localStorage.setItem("junkMarkers", JSON.stringify(data));
         document.getElementById("junkInputBox").style.display = "none";
-        loadChapter(currentChapter, true); // 👈 Preserve scroll
+        loadChapter(currentChapter, true);
       };
     });
 
     function normalizeText(text) {
-      return text
-        .replace(/\r\n/g, '\n')
-        .replace(/\u00A0/g, ' ')
-        .replace(/[ \t]+/g, ' ')
-        .trim();
+      return text.replace(/\r\n/g, '\n').replace(/\u00A0/g, ' ').replace(/[ \t]+/g, ' ').trim();
     }
 
     function cleanTitle(line) {
@@ -230,7 +225,7 @@
         document.getElementById('chapterTitle').textContent = title;
         document.getElementById('chapterContent').innerHTML = parseChapter(contentOnly);
 
-        history.replaceState({}, '', `/ch/${n}`);
+        history.replaceState({}, '', `?ch=${n}`);
         localStorage.setItem('lastChapter', n);
 
         setTimeout(() => {
