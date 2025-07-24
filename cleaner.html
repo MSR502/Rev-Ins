@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Junk Cleaner</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #fff;
+      padding: 1rem;
+      margin: 0;
+    }
+    h1 {
+      font-size: 20px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 4px;
+    }
+    .chapter {
+      margin-bottom: 24px;
+      border: 1px solid #ccc;
+      padding: 12px;
+      border-radius: 6px;
+    }
+    .chapter h2 {
+      font-size: 16px;
+      margin: 0 0 8px 0;
+    }
+    .junk {
+      background: #f2f2f2;
+      padding: 6px;
+      margin-bottom: 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    .button {
+      padding: 6px 10px;
+      font-size: 14px;
+      background: #444;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .button:disabled {
+      background: #999;
+      cursor: not-allowed;
+    }
+    #cleanAllBtn {
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Junk Cleaner</h1>
+  <button id="cleanAllBtn" class="button">Clean All</button>
+  <div id="junkList">Loading...</div>
+
+  <script>
+    const USER = 'MSR502';
+    const REPO = 'Rev-Ins';
+    const PATH = 'res1';
+
+    const junkListEl = document.getElementById("junkList");
+    const cleanAllBtn = document.getElementById("cleanAllBtn");
+    const junkData = JSON.parse(localStorage.getItem("junkMarkers") || "{}");
+
+    function getToken() {
+      let token = localStorage.getItem('githubToken');
+      if (!token) {
+        token = prompt("Enter your GitHub access token:");
+        if (token) {
+          localStorage.setItem('githubToken', token);
+        } else {
+          alert("GitHub token is required.");
+        }
+      }
+      return token;
+    }
+
+    function getHeaders() {
+      const token = getToken();
+      return {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github.v3+json'
+      };
+    }
+
+    function utf8ToBase64(str) {
+      return btoa(new Uint8Array(new TextEncoder().encode(str)).reduce((data, byte) => data + String.fromCharCode(byte), ''));
+    }
+
+    async function loadFile(chapterId) {
+      const filename = `${chapterId}.ri`;
+      const url = `https://api.github.com/repos/${USER}/${REPO}/contents/${PATH}/${filename}`;
+      const res = await fetch(url, {
+        headers: getHeaders()
+      });
+      if (!res.ok) throw new Error("Failed to load " + chapterId);
+      const json = await res.json();
+      const content = atob(json.content.replace(/\n/g, ''));
+      return { content, sha: json.sha };
+    }
+
+    async function saveFile(chapterId, newText, sha) {
+      const filename = `${chapterId}.ri`;
+      const url = `https://api.github.com/repos/${USER}/${REPO}/contents/${PATH}/${filename}`;
+      const body = {
+        message: `Cleaned junk from ${chapterId}`,
+        content: utf8ToBase64(newText),
+        sha
+      };
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: {
+          ...getHeaders(),
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error("Failed to update " + chapterId);
+    }
+
+    async function cleanChapter(chapterId, button = null) {
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Cleaning...";
+      }
+
+      try {
+        const { content, sha } = await loadFile(chapterId);
+        const junkArr = junkData[chapterId] || [];
+
+        let cleaned = content;
+        for (const junk of junkArr) {
+          cleaned = cleaned.replaceAll(junk, '');
+        }
+
+        await saveFile(chapterId, cleaned, sha);
+        delete junkData[chapterId];
+        localStorage.setItem("junkMarkers", JSON.stringify(junkData));
+
+        console.log(`✅ Cleaned ${chapterId}: removed ${junkArr.length} junk item(s)`);
+        if (button) {
+          button.textContent = "Cleaned";
+        }
+
+        render();
+      } catch (e) {
+        alert("Error cleaning " + chapterId + ": " + e.message);
+        if (button) {
+          button.disabled = false;
+          button.textContent = "Clean";
+        }
+      }
+    }
+
+    function render() {
+      junkListEl.innerHTML = '';
+
+      if (Object.keys(junkData).length === 0) {
+        junkListEl.textContent = "No junk data found in localStorage.";
+        cleanAllBtn.disabled = true;
+        return;
+      }
+
+      cleanAllBtn.disabled = false;
+
+      for (const [chapterId, junkArr] of Object.entries(junkData)) {
+        const div = document.createElement('div');
+        div.className = 'chapter';
+        const header = document.createElement('h2');
+        header.textContent = chapterId;
+        div.appendChild(header);
+
+        junkArr.forEach((txt) => {
+          const junk = document.createElement('div');
+          junk.className = 'junk';
+          junk.textContent = txt;
+          div.appendChild(junk);
+        });
+
+        const btn = document.createElement('button');
+        btn.className = 'button';
+        btn.textContent = 'Clean';
+        btn.onclick = () => cleanChapter(chapterId, btn);
+        div.appendChild(btn);
+
+        junkListEl.appendChild(div);
+      }
+    }
+
+    cleanAllBtn.onclick = async () => {
+      cleanAllBtn.disabled = true;
+      const chapters = Object.keys(junkData);
+      for (let chapterId of chapters) {
+        await cleanChapter(chapterId);
+      }
+    };
+
+    render();
+  </script>
+</body>
+</html>
