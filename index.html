@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Novel Reader</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #f9f9f9;
+      --text-color: #111;
+      --accent-color: #0077cc;
+    }
+    body {
+      margin: 0;
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+    }
+
+    header, footer {
+  padding: 10px;
+  background: white;
+  }
+    header {
+      
+      border-bottom: 1px solid #ddd;
+    }
+    footer {
+      
+      border-top: 1px solid #ddd;
+    }
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+    }
+    .nav button {
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+    }
+    main {
+      padding: 20px 16px 60px;
+      line-height: 1.6;
+      min-height: 700px;
+    }
+    h1 {
+      font-size: 18px;
+      margin-bottom: 12px;
+    }
+    p {
+      margin: 1em 0;
+    }
+    .fab {
+      position: fixed;
+      bottom: 53px;
+      right: 26px;
+      z-index: 1000;
+      background: #aeaeaeae;
+      color: white;
+      border: 0;
+      border-radius: 10px;
+      width: 42px;
+      height: 42px;
+      font-size: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+      user-select: none;
+    }
+    .fab:active {
+      cursor: grabbing;
+      background: #c21807;
+    }
+    #junkInputBox {
+      position: fixed;
+      display: none;
+      background: #fafafaaa;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      z-index: 1000;
+      width: 220px;
+    }
+    #junkInputBox textarea {
+      width: 100%;
+      height: 80px;
+    }
+    #confirmJunk {
+      padding: 4px;
+      width: 100%;
+    }
+    .highlight-junk {
+      background: yellow;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="nav">
+      <button id="navLeftTop"></button>
+      <span id="chapterNumber">Chapter</span>
+      <button id="navRightTop"></button>
+    </div>
+  </header>
+  <main>
+    <h1 id="chapterTitle"></h1>
+    <div id="chapterContent" class="content"></div>
+  </main>
+  <footer>
+    <div class="nav">
+      <button id="navLeftBottom"></button>
+      <span id="chapterNumberBottom">Chapter</span>
+      <button id="navRightBottom"></button>
+    </div>
+  </footer>
+
+  <button class="fab" id="junkFab">
+    <svg width="800px" height="800px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" stroke-width="5" stroke="#fff" fill="none">
+      <circle cx="32" cy="32" r="25.3"/>
+      <line x1="49.89" y1="49.89" x2="14.11" y2="14.11"/>
+    </svg>
+  </button>
+
+  <div id="junkInputBox">
+    <textarea id="junkText" placeholder="Paste text to mark as junk"></textarea><br>
+    <button id="confirmJunk">Confirm</button>
+  </div>
+
+  <script>
+    const Icons = {
+      left: `<svg viewBox="0 0 24 24" width="24" height="24"><polyline points="15 18 9 12 15 6" stroke="black" stroke-width="2" fill="none"/></svg>`,
+      right: `<svg viewBox="0 0 24 24" width="24" height="24"><polyline points="9 6 15 12 9 18" stroke="black" stroke-width="2" fill="none"/></svg>`
+    };
+
+    const baseUrl = 'https://raw.githubusercontent.com/MSR502/Rev-Ins/refs/heads/main/res1/';
+    let currentChapter = 1;
+    let rawChapterText = "";
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('navLeftTop').innerHTML = Icons.left;
+      document.getElementById('navRightTop').innerHTML = Icons.right;
+      document.getElementById('navLeftBottom').innerHTML = Icons.left;
+      document.getElementById('navRightBottom').innerHTML = Icons.right;
+
+      const match = location.pathname.match(/\/ch\/(\d+)/);
+      const stored = localStorage.getItem('lastChapter');
+      const ch = match ? parseInt(match[1]) : stored ? parseInt(stored) : 1;
+      loadChapter(ch);
+
+      document.getElementById("navLeftTop").onclick = () => loadChapter(currentChapter - 1);
+      document.getElementById("navLeftBottom").onclick = () => loadChapter(currentChapter - 1);
+      document.getElementById("navRightTop").onclick = () => loadChapter(currentChapter + 1);
+      document.getElementById("navRightBottom").onclick = () => loadChapter(currentChapter + 1);
+
+      document.getElementById("junkText").addEventListener("input", liveHighlight);
+
+      document.getElementById("confirmJunk").onclick = () => {
+        const input = document.getElementById("junkText").value.trim();
+        if (!input) return;
+        const chapterId = `ch${currentChapter}`;
+        const data = JSON.parse(localStorage.getItem("junkMarkers") || "{}");
+        if (!data[chapterId]) data[chapterId] = [];
+        if (!data[chapterId].includes(input)) {
+          data[chapterId].push(input);
+        }
+        localStorage.setItem("junkMarkers", JSON.stringify(data));
+        document.getElementById("junkInputBox").style.display = "none";
+        loadChapter(currentChapter, true); // 👈 Preserve scroll
+      };
+    });
+
+    function normalizeText(text) {
+      return text
+        .replace(/\r\n/g, '\n')
+        .replace(/\u00A0/g, ' ')
+        .replace(/[ \t]+/g, ' ')
+        .trim();
+    }
+
+    function cleanTitle(line) {
+      return line.replace(/^chapter\s*\d+\s*[-—–:：.]*\s*/i, '').trim();
+    }
+
+    function parseChapter(text) {
+      return text
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(line => `<p>${line}</p>`)
+        .join('');
+    }
+
+    function applyJunkMask(text, chapterId) {
+      const data = JSON.parse(localStorage.getItem('junkMarkers') || "{}");
+      const junkList = data[chapterId] || [];
+      for (const junk of junkList) {
+        text = text.replaceAll(junk, '');
+      }
+      return text;
+    }
+
+    async function loadChapter(n, preserveScroll = false) {
+      if (n < 1) return;
+      const scrollY = preserveScroll ? window.scrollY : 0;
+
+      currentChapter = n;
+      const chapterId = `ch${n}`;
+      document.getElementById('chapterNumber').textContent = `Chapter ${n}`;
+      document.getElementById('chapterNumberBottom').textContent = `Chapter ${n}`;
+      document.getElementById('chapterTitle').textContent = '';
+      document.getElementById('chapterContent').innerHTML = `<p>Loading...</p>`;
+
+      try {
+        const res = await fetch(`${baseUrl}ch${n}.ri`);
+        if (!res.ok) throw new Error("Not found");
+
+        const txt = await res.text();
+        const lines = txt.trim().split('\n').filter(l => l.trim().length > 0);
+        const rawTitle = lines[0];
+        const title = cleanTitle(rawTitle);
+        let contentOnly = lines.slice(1).join('\n\n');
+        rawChapterText = contentOnly;
+
+        contentOnly = applyJunkMask(contentOnly, chapterId);
+        document.getElementById('chapterTitle').textContent = title;
+        document.getElementById('chapterContent').innerHTML = parseChapter(contentOnly);
+
+        history.replaceState({}, '', `/ch/${n}`);
+        localStorage.setItem('lastChapter', n);
+
+        setTimeout(() => {
+          window.scrollTo({ top: scrollY, behavior: 'auto' });
+        }, 0);
+      } catch (e) {
+        document.getElementById('chapterTitle').textContent = 'Not Found';
+        document.getElementById('chapterContent').innerHTML = '<p>Chapter not found.</p>';
+      }
+    }
+
+    function liveHighlight() {
+      const input = document.getElementById("junkText").value.trim();
+      const container = document.getElementById("chapterContent");
+      const cleanText = rawChapterText;
+      if (!input || !cleanText.includes(input)) {
+        container.innerHTML = parseChapter(applyJunkMask(cleanText, `ch${currentChapter}`));
+        return;
+      }
+      const highlighted = cleanText.replaceAll(
+        input,
+        `<span class='highlight-junk'>${input}</span>`
+      );
+      container.innerHTML = parseChapter(highlighted);
+    }
+
+    (function makeFabDraggable() {
+      const fab = document.getElementById("junkFab");
+      const box = document.getElementById("junkInputBox");
+      let offsetX = 0, offsetY = 0;
+      let isDragging = false, hasMoved = false;
+      let boxVisible = false;
+
+      const updateBoxPosition = () => {
+        const rect = fab.getBoundingClientRect();
+        const boxWidth = box.offsetWidth;
+        const boxHeight = box.offsetHeight;
+        const margin = 8;
+        let left = rect.left;
+        let top = rect.top - boxHeight - margin;
+        if (left + boxWidth > window.innerWidth) left = window.innerWidth - boxWidth - margin;
+        if (left < margin) left = margin;
+        if (top < margin) top = rect.bottom + margin;
+        box.style.left = `${left}px`;
+        box.style.top = `${top}px`;
+      };
+
+      const startDrag = (e) => {
+        isDragging = true;
+        hasMoved = false;
+        const rect = fab.getBoundingClientRect();
+        const touch = e.touches ? e.touches[0] : e;
+        offsetX = touch.clientX - rect.left;
+        offsetY = touch.clientY - rect.top;
+        e.preventDefault();
+      };
+
+      const onDrag = (e) => {
+        if (!isDragging) return;
+        const touch = e.touches ? e.touches[0] : e;
+        const x = touch.clientX - offsetX;
+        const y = touch.clientY - offsetY;
+        if (Math.abs(x - fab.offsetLeft) > 3 || Math.abs(y - fab.offsetTop) > 3) hasMoved = true;
+        fab.style.left = `${x}px`;
+        fab.style.top = `${y}px`;
+        fab.style.bottom = 'auto';
+        updateBoxPosition();
+      };
+
+      const endDrag = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        if (!hasMoved) {
+          boxVisible = !boxVisible;
+          box.style.display = boxVisible ? 'block' : 'none';
+          if (boxVisible) {
+            document.getElementById("junkText").value = "";
+            updateBoxPosition();
+          }
+        }
+      };
+
+      fab.addEventListener("mousedown", startDrag);
+      fab.addEventListener("touchstart", startDrag, { passive: false });
+      window.addEventListener("mousemove", onDrag);
+      window.addEventListener("touchmove", onDrag, { passive: false });
+      window.addEventListener("mouseup", endDrag);
+      window.addEventListener("touchend", endDrag);
+    })();
+  </script>
+</body>
+</html>
